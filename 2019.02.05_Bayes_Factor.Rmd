@@ -1,0 +1,338 @@
+---
+title: "Bayes Factor"
+subtitle: "inspired by [Etz, Haaf, Rouder, Vandekerckhove, 2018]"
+author: "G. Moroz"
+date: "February 5, 2019"
+output: ioslides_presentation
+runtime: shiny
+---
+
+<style>
+slides > slide {
+  font-family: "Brill", Brill, serif;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(tidyverse)
+library(extrafont)
+theme_set(theme_bw()+theme(legend.position = "bottom", text = element_text(family = "Brill", size = 16)))
+x_axis <- seq(0, 1, 0.001)
+dunifbinom <- function(x, N, lo, hi) {
+  y = x
+  for (i in 1:length(x)) {
+    y[i] = integrate(function(theta) dunif(theta, lo, hi) * dbinom(x[i], N, theta),
+                     0, 1, subdivisions = 10000L,
+                     rel.tol = 1e-4, 
+                     abs.tol = 1e-4,
+                     stop.on.error = TRUE,
+                     keep.xy = FALSE, 
+                     aux = NULL)$value
+  }
+  y
+}
+```
+
+## Statistical Hypothesis
+
+From some point of view scince could be considered as a result of the following steps made by the researcher:
+
+* Creating a set of competing hypotheses
+* Collecting data
+* Testing data against hypotheses
+
+## Data
+
+* The nominal lexicon in Zilo (Andi) is divided in five classes;
+* There are two classes for inanimate objects with no obvious semantic distinction between them;
+* During the experiment we tested whether the assignment of inanimate noun classes is consistent across speakers in different layers of the lexicon, including native words, older loan words, and more recent borrowings from Russian;
+* 114 lexical items
+* 16 speakers (8 f, 8 m)
+* For each word from each speaker we recieved either *b* or *r*
+* see [Мороз, Ферхеес, 2018; Moroz, Verhees in press]
+
+## Hypotheses
+
+* For each word we have three variants:
+    * *b*-class
+    * *r*-class
+    * variability
+
+> * So we can represent our idea with three **point hypotheses**:
+    * *b*-class --- 1
+    * *r*-class --- 0
+    * variability --- 0.5
+    
+## Point hypotheses
+
+```{r}
+data_frame(x = rep(x_axis, 3),
+           y = c(5*(x_axis == 0),
+                 5*(x_axis == 1),
+                 5*(x_axis == 0.5)),
+           type = rep(c("r, θ = 0", "b, θ = 1", "variability, θ = 0.5"),each = 1001)) %>% 
+  ggplot(aes(x, y, xend = x, yend = 0.1, color = type, linetype = type))+
+  geom_step(size = 1.2)+
+  labs(title = "three point hypotheses",
+       x = "probability",
+       y = "")
+```
+
+
+## Point hypotheses
+
+```{r}
+data_frame(x = rep(x_axis, 2),
+           y = c(5*(x_axis == 1),
+                 5*(x_axis == 0.5)),
+           type = rep(c("b, θ = 1", "variability, θ = 0.5"),each = 1001)) %>% 
+  ggplot(aes(x, y, xend = x, yend = 0.1, color = type, linetype = type))+
+  geom_step(size = 1.2)+
+  labs(title = "two point hypotheses",
+       x = "probability",
+       y = "")
+```
+
+## Model predictions: point hypotheses
+```{r}
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dbinom(1:16, 16, prob = 1)),
+           type = rep(c("variability, θ = 0.5", "b, θ = 1"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "two point hypotheses",
+       x = "predicted number of b under each hypothesis",
+       y = "probability")
+```
+
+May be it is better to weaken our model...
+
+## Point hypotheses
+
+```{r}
+data_frame(x = rep(x_axis, 2),
+           y = c(5*(x_axis == 0.96),
+                 5*(x_axis == 0.5)),
+           type = rep(c("b, θ = 0.96", "variability, θ = 0.5"),each = 1001)) %>% 
+  ggplot(aes(x, y, xend = x, yend = 0.1, color = type, linetype = type))+
+  geom_step(size = 1.2)+
+  labs(title = "two point hypotheses",
+       x = "probability",
+       y = "")
+```
+
+## Model predictions: point hypotheses
+
+```{r}
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dbinom(1:16, 16, prob = 0.96)),
+           type = rep(c("variability, θ = 0.5", "b, θ = 0.96"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "two point hypotheses",
+       x = "predicted number of b under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16)
+```
+
+> * But there is a little problem...
+
+## Point models gap...
+
+```{r}
+inputPanel(
+  sliderInput("n", label = "Number of observations:",
+              min = 16, max = 90, value = 16, step = 1))
+renderPlot({
+  data_frame(x = rep(1:input$n, 2),
+           y = c(-dbinom(1:input$n, input$n, prob = 0.5),
+                 dbinom(1:input$n, input$n, prob = 0.96)),
+           type = rep(c("variability, θ = 0.5", "b, θ = 0.96"),each = input$n)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "two point hypotheses",
+       x = "predicted number of b under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:input$n*5)+
+  theme(legend.position = "bottom")
+})
+```
+
+## Interval hypotheses
+
+```{r}
+data_frame(x = rep(x_axis, 2),
+           y = c(5*(x_axis == 0.5),
+                 dunif(x_axis, 0.5, 1)),
+           type = rep(c("variability, θ = 0.5", "b, θ = u(0.5, 1)"),each = 1001)) %>% 
+  ggplot(aes(x, y, xend = x, yend = 0.1, color = type, linetype = type))+
+  geom_step(size = 1.2)+
+  labs(title = "point and interval hypotheses",
+       x = "probability",
+       y = "")
+```
+
+## Model predictions: interval hypotheses
+
+```{r}
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dunifbinom(x = 1:16, 16, 0.5, 1)),
+           type = rep(c("variability, θ = 0.5", "b, θ = u(θ|0.5, 1)"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "point and interval hypotheses",
+       x = "predicted number of b under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16)
+```
+
+## Bayes Factor: some math...
+
+Bayes' theorem:
+$$P(θ|Data) = \frac{P(Data|θ)\times P(θ)}{P(Data)}$$
+Restructure Bayes' theorem:
+$$\frac{P(θ|Data)}{P(θ)} = \frac{P(Data|θ)}{P(Data)}$$
+Bayes' theorem for two models:
+$$\frac{\frac{P(M_A|Data)}{P(M_A)}}{\frac{P(M_B|Data)}{P(M_B)}} = \frac{\frac{P(Data|M_A)}{P(Data)}}{\frac{P(Data|M_B)}{P(Data)}} = \frac{P(Data|M_A)}{P(Data|M_B)} = BF_{AB}$$
+
+The Bayes factor is a measuere that quantify the support for a model over another, **regardless** of whether these models are correct.
+
+## Bayes Factor for interval hypotheses
+
+* Imagine that for some word I get 11 *b* and 5 *r*, which model is supported by these observations?
+
+```{r}
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dunifbinom(x = 1:16, 16, 0.5, 1)),
+           type = rep(c("variability, θ = 0.5", "b, θ = u(θ|0.5, 1)"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "point and interval hypotheses",
+       x = "predicted number of b under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16)+
+  annotate(geom = "text", x = 11, y = -0.1, label = "⬆", size = 10)+
+  annotate(geom = "text", x = 11, y =  0.14, label = "⬇", size = 10)
+```
+
+## Bayes Factor for interval hypotheses
+
+```{r}
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dunifbinom(x = 1:16, 16, 0.5, 1)),
+           type = rep(c("variability, θ = 0.5", "b, θ = u(θ|0.5, 1)"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "point and interval hypotheses",
+       x = "predicted number of b under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16)+
+  annotate(geom = "text", x = 11, y = -0.1, label = "⬆", size = 10)+
+  annotate(geom = "text", x = 11, y =  0.14, label = "⬇", size = 10)
+```
+
+$$\frac{L(11|\theta = u(\theta|0.5, 1))}{L(11|\theta = 0.5))} = \frac{0.10920805}{0.06665039} = 1.638521$$
+
+## How to interpret Bayes Factor?
+
+$$\frac{L(11|\theta = u(\theta|0.5, 1))}{L(11|\theta = 0.5))} = \frac{0.10920805}{0.06665039} = 1.638521$$
+
+| BF      | Interpretation                      |
+|---------|-------------------------------------|
+| 0 to 2  | Not worth more than a bare mention  |
+| 2 to 6  | Positive                            |
+| 6 to 10 | Strong                              |
+| > 10    | Very strong                         |
+
+## It is possible to use any model you want!
+
+```{r}
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dbinom(1:16, 16, prob = 0.7)),
+           type = rep(c("θ = 0.5", "θ = 0.7"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "two point hypotheses",
+       x = "predicted number under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16) -> p1
+
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dunifbinom(x = 1:16, 16, 0, 1)),
+           type = rep(c("θ = 0.5", "θ = u(θ|0, 1)"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "point and unimodal",
+       x = "predicted number under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16) -> p2
+
+data_frame(x = rep(1:16, 2),
+           y = c(-dunifbinom(x = 1:16, 16, 0, 1),
+                 dunifbinom(x = 1:16, 16, 0.5, 1)),
+           type = rep(c("θ = u(θ|0, 1)", "θ = u(θ|0.5, 1)"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "",
+       x = "predicted number under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16) -> p3
+
+data_frame(x = rep(1:16, 2),
+           y = c(-dunifbinom(x = 1:16, 16, 0, 0.5),
+                 dunifbinom(x = 1:16, 16, 0.5, 1)),
+           type = rep(c("θ = u(θ|0, 0.5)", "θ = u(θ|0.5, 1)"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "complementary directions",
+       x = "predicted number under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16) -> p4
+
+gridExtra::grid.arrange(p1, p2, p3, p4)
+```
+
+## What about linguistics?
+
+```{r}
+data_frame(x = rep(1:16, 2),
+           y = c(-dbinom(1:16, 16, prob = 0.5),
+                 dunifbinom(x = 1:16, 16, 0, 1)),
+           type = rep(c("variability, θ = 0.5", "not variability = θ = u(θ|0, 1)"),each = 16)) %>% 
+  ggplot(aes(x, y, fill = type))+
+  geom_col()+
+  labs(title = "point and unimodal",
+       x = "predicted number under each hypothesis",
+       y = "probability")+
+  scale_x_continuous(breaks = 1:16)
+```
+
+## What about linguistics?
+
+```{r}
+df <- read_csv("zilo_class_experiment.csv")
+df %>% 
+  count(stimulus, translation_en, class) %>% 
+  filter(class == "b") %>% 
+  mutate(variability_model = dbinom(n, 16, prob = 0.5),
+         non_variability_model = dunifbinom(x = n, 16, 0, 1),
+         BF_vm_nvm = variability_model/non_variability_model) %>% 
+  select(stimulus, translation_en, n, BF_vm_nvm) %>% 
+  arrange(desc(BF_vm_nvm)) %>% 
+  DT::datatable()
+```
+
+## Conclusions
+
+* Bayes Factor is a really nice tool for comparing competing hypotheses
+* It is possible to compare even more then one model
+> * There is no so many cases where the variability model supports observed data more
+strongly than does the alternative
